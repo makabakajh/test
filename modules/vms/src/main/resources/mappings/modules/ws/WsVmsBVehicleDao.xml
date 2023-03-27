@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jeesite.modules.ws.dao.WsVmsBVehicleDao">
+	
+	<!-- 查询数据
+	<select id="findList" resultType="WsVmsBVehicle">
+		SELECT ${sqlMap.column.toSql()}
+		FROM ${sqlMap.table.toSql()}
+		<where>
+			${sqlMap.where.toSql()}
+		</where>
+		ORDER BY ${sqlMap.order.toSql()}
+	</select> -->
+	<select id="getLicenseByDeviceCode" resultType="map">
+		SELECT a.license_plate licensePlate,c.device_code deviceCode,d.dict_label,d.dict_icon
+		FROM ws_vms_b_vehicle a
+		LEFT JOIN ws_vms_r_vehicle_device b on a.id=b.vehicle_id
+		LEFT JOIN ws_vms_b_device c on c.id=b.device_id
+		LEFT JOIN js_sys_dict_data d on a.vehicle_type=d.dict_value
+		<trim prefixOverrides="AND|OR" prefix="WHERE">
+			and a.status=0
+			and d.dict_type='vehicle_type'
+			<if test="deviceCodes!=null and deviceCodes.size()!=0">
+				AND c.device_code in
+				<foreach collection="deviceCodes" item="deviceCode" separator="," open="(" close=")" index="index">
+					#{deviceCode}
+				</foreach>
+			</if>
+		</trim>
+	</select>
+
+	<select id="getVehicleList" resultType="map">
+		SELECT DISTINCT
+		v.id,
+		v.license_plate licensePlate,
+		v.init_mileage initMileage,
+		d.driver_name driverName,
+		tt.mileage currentMileage,
+		tt.date
+		FROM
+		ws_vms_b_vehicle v
+		LEFT JOIN ws_vms_r_vehicle_drives vd ON v.id = vd.vehicle_id
+		AND vd.driver_type = '0'
+		LEFT JOIN ws_vms_b_drivers d ON vd.driver_id = d.id
+		LEFT JOIN (select vehicle_id,mileage,date,rank from (
+			select
+				a.*,
+				@rownum := @rownum +1,
+				if(
+					@vehicle = a.vehicle_id or (@vehicle is null and a.vehicle_id  is null),
+					@rank := @rank + 1,
+					@rank := 1
+				) as rank,
+				@vehicle := a.vehicle_id
+				from
+				ws_vms_b_mileage a,
+				(select @rownum:=0,@vehicle := null, @rank:=0 ) b
+					order by a.vehicle_id asc,a.date desc,a.create_date desc
+				  ) result
+				having rank &lt;2
+			) tt
+		on v.id=tt.vehicle_id
+	</select>
+	<select id="getVehicleInfoById" resultType="map">
+		SELECT
+			v.id,v.license_plate licensePlate,v.license_color licenseColor,v.vehicle_type vehicleType,v.trailer,
+			d.driver_name driverName,d.driving_license drivingLicense,d.organizations,d.qualification_certificate qualificationCertificate,
+			d.road_trans_license roadTransLicense,d.valid_period_from validPeriodFrom,d.valid_period_to validPeriodTo,
+			d.vehicle_class vehicleClass,d.vehicle_driving_license vehicleDrivingLicense,
+			l.license_type licenseType,l.`owner`,l.address,l.use_character useCharacter,l.model,l.engine_no engineNo,
+			l.register_date registerDate,l.issue_date issueDate,l.issuing_organizations issuingOrganizations,
+			l.busload,l.gross_mass grossMass,l.curb_mass curbMass,l.tonnage,l.out_dimension outDimension,
+			l.traction_mass tractionMass,l.vehicle_energy_type vehicleEnergyType,l.vehicle_license vehicleLicense
+		from ws_vms_b_vehicle v
+		LEFT JOIN ws_vms_r_vehicle_drives vd on v.id=vd.vehicle_id and vd.driver_type='0'
+		LEFT JOIN ws_vms_b_drivers d on vd.driver_id=d.id and d.`status`='0'
+		LEFT JOIN ws_vms_m_vehicle_license l on v.id=l.vehicle_id and l.`status`='0'
+		<trim prefix="WHERE" prefixOverrides="and|or">
+			and v.`status`='0'
+			<if test="vehicleId!=null and vehicleId!=''">
+				and v.id=#{vehicleId}
+			</if>
+		</trim>
+	</select>
+	<select id="getVehicleCost" resultType="map">
+		SELECT sum(amount) '费用','油耗费用' AS '费用名称' FROM ws_vms_m_oil o
+		where vehicle_id=#{vehicleId} AND DATE_FORMAT(oil_date,'%Y')=#{date}
+		UNION
+		  SELECT sum(amount),'维修费用' FROM ws_vms_m_repair
+		  WHERE vehicle_id=#{vehicleId} AND DATE_FORMAT(repair_date,'%Y')=#{date}
+		UNION
+		  SELECT sum(amount),'保险费用' FROM ws_vms_m_insurance
+		  WHERE vehicle_id=#{vehicleId} AND DATE_FORMAT(insurance_date,'%Y')=#{date}
+		UNION
+		  SELECT sum(amount),'违章费用' FROM ws_vms_m_regulations
+		  WHERE vehicle_id=#{vehicleId} AND DATE_FORMAT(regulations_date,'%Y')=#{date}
+		UNION
+		  SELECT sum(amount),'事故费用' FROM ws_vms_m_accident
+		  WHERE vehicle_id=#{vehicleId} AND DATE_FORMAT(accident_date,'%Y')=#{date}
+	    UNION
+		  SELECT sum(amount),'年检费用' FROM ws_vms_m_year_inspect
+		  WHERE vehicle_id=#{vehicleId} AND DATE_FORMAT(inspect_date,'%Y')=#{date}
+	</select>
+	<select id="getTotalCostByMonth" resultType="map">
+		SELECT sum(amount) 'cost',DATE_FORMAT(oil_date,'%Y-%m') 'date','油费' AS 'costName'  FROM ws_vms_m_oil
+		WHERE DATE_FORMAT(oil_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(oil_date,'%Y-%m')&lt;=#{endDate}
+		GROUP BY DATE_FORMAT(oil_date,'%Y-%m')
+		UNION
+			SELECT sum(amount),DATE_FORMAT(repair_date,'%Y-%m'),'维修费用' FROM ws_vms_m_repair
+			WHERE DATE_FORMAT(repair_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(repair_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY DATE_FORMAT(repair_date,'%Y-%m')
+		UNION
+			SELECT sum(amount),DATE_FORMAT(insurance_date,'%Y-%m'),'保险费用' FROM ws_vms_m_insurance
+			WHERE DATE_FORMAT(insurance_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(insurance_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY DATE_FORMAT(insurance_date,'%Y-%m')
+		UNION
+			SELECT sum(amount),DATE_FORMAT(regulations_date,'%Y-%m'),'违章费用' FROM ws_vms_m_regulations
+			WHERE DATE_FORMAT(regulations_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(regulations_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY DATE_FORMAT(regulations_date,'%Y-%m')
+		UNION
+			SELECT sum(amount),DATE_FORMAT(accident_date,'%Y-%m'),'事故费用' FROM ws_vms_m_accident
+			WHERE DATE_FORMAT(accident_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(accident_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY DATE_FORMAT(accident_date,'%Y-%m')
+		UNION
+			SELECT sum(amount),DATE_FORMAT(inspect_date,'%Y-%m'),'年检费用' FROM ws_vms_m_year_inspect
+			WHERE DATE_FORMAT(inspect_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(inspect_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY DATE_FORMAT(inspect_date,'%Y-%m')
+	</select>
+
+	<select id="getTotalCostByQuarter" resultType="map">
+		SELECT sum(amount) 'cost',convert(FLOOR((DATE_FORMAT(oil_date,'%m')-1)/3)+1,CHAR)  AS 'date','油费' AS 'costName'  FROM ws_vms_m_oil
+		WHERE DATE_FORMAT(oil_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(oil_date,'%Y-%m')&lt;=#{endDate}
+		GROUP BY FLOOR((DATE_FORMAT(oil_date,'%m')-1)/3)+1
+		UNION
+			SELECT sum(amount),convert(FLOOR((DATE_FORMAT(repair_date,'%m')-1)/3)+1,CHAR),'维修费用' FROM ws_vms_m_repair
+			WHERE DATE_FORMAT(repair_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(repair_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY FLOOR((DATE_FORMAT(repair_date,'%m')-1)/3)+1
+		UNION
+			SELECT sum(amount),convert(FLOOR((DATE_FORMAT(insurance_date,'%m')-1)/3)+1,CHAR),'保险费用' FROM ws_vms_m_insurance
+			WHERE DATE_FORMAT(insurance_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(insurance_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY FLOOR((DATE_FORMAT(insurance_date,'%m')-1)/3)+1
+		UNION
+			SELECT sum(amount),convert(FLOOR((DATE_FORMAT(regulations_date,'%m')-1)/3)+1,CHAR),'违章费用' FROM ws_vms_m_regulations
+			WHERE DATE_FORMAT(regulations_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(regulations_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY FLOOR((DATE_FORMAT(regulations_date,'%m')-1)/3)+1
+		UNION
+			SELECT sum(amount),convert(FLOOR((DATE_FORMAT(accident_date,'%m')-1)/3)+1,CHAR),'事故费用' FROM ws_vms_m_accident
+			WHERE DATE_FORMAT(accident_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(accident_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY FLOOR((DATE_FORMAT(accident_date,'%m')-1)/3)+1
+		UNION
+			SELECT sum(amount),convert(FLOOR((DATE_FORMAT(inspect_date,'%m')-1)/3)+1,CHAR),'年检费用' FROM ws_vms_m_year_inspect
+			WHERE DATE_FORMAT(inspect_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(inspect_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY FLOOR((DATE_FORMAT(inspect_date,'%m')-1)/3)+1
+	</select>
+	<select id="getVehicleCostByMonth" resultType="map">
+		SELECT a.license_plate costName,a.date,sum(a.amount) cost FROM
+		  (SELECT v.license_plate,DATE_FORMAT(oil_date,'%Y-%m') 'date',sum(amount) 'amount'  FROM ws_vms_m_oil o
+			LEFT JOIN ws_vms_b_vehicle v on o.vehicle_id=v.id
+			WHERE DATE_FORMAT(oil_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(oil_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY vehicle_id,DATE_FORMAT(oil_date,'%Y-%m')
+		UNION
+			SELECT v.license_plate,DATE_FORMAT(repair_date,'%Y-%m') '日期',sum(amount)  FROM ws_vms_m_repair r
+			LEFT JOIN ws_vms_b_vehicle v on r.vehicle_id=v.id
+			WHERE DATE_FORMAT(repair_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(repair_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY vehicle_id,DATE_FORMAT(repair_date,'%Y-%m')
+		UNION
+			SELECT v.license_plate,DATE_FORMAT(insurance_date,'%Y-%m') '日期',sum(amount)  FROM ws_vms_m_insurance i
+			LEFT JOIN ws_vms_b_vehicle v on i.vehicle_id=v.id
+			WHERE DATE_FORMAT(insurance_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(insurance_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY vehicle_id,DATE_FORMAT(insurance_date,'%Y-%m')
+		UNION
+			SELECT v.license_plate,DATE_FORMAT(regulations_date,'%Y-%m') '日期',sum(amount)FROM ws_vms_m_regulations re
+			LEFT JOIN ws_vms_b_vehicle v on re.vehicle_id=v.id
+			WHERE DATE_FORMAT(regulations_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(regulations_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY vehicle_id,DATE_FORMAT(regulations_date,'%Y-%m')
+		UNION
+			SELECT v.license_plate,DATE_FORMAT(accident_date,'%Y-%m') '日期',sum(amount) FROM ws_vms_m_accident ac
+			LEFT JOIN ws_vms_b_vehicle v on ac.vehicle_id=v.id
+			WHERE DATE_FORMAT(accident_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(accident_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY vehicle_id,DATE_FORMAT(accident_date,'%Y-%m')
+		UNION
+			SELECT v.license_plate,DATE_FORMAT(inspect_date,'%Y-%m') '日期',sum(amount) FROM ws_vms_m_year_inspect ii
+			LEFT JOIN ws_vms_b_vehicle v on ii.vehicle_id=v.id
+			WHERE DATE_FORMAT(inspect_date,'%Y-%m')>=#{startDate} and DATE_FORMAT(inspect_date,'%Y-%m')&lt;=#{endDate}
+			GROUP BY vehicle_id,DATE_FORMAT(inspect_date,'%Y-%m')
+		  ) as a
+		GROUP BY license_plate,`date`
+	</select>
+	<select id="getVehicleCostByQuarter" resultType="map">
+		SELECT
+			license_plate costName,
+			sum(cost) cost,
+			`date`
+		FROM
+		(
+			SELECT
+				license_plate,
+				sum(amount) 'cost',
+				CONVERT (FLOOR((DATE_FORMAT(oil_date, '%m') - 1) / 3) + 1,CHAR) AS 'date'
+			FROM
+				ws_vms_m_oil o
+			LEFT JOIN ws_vms_b_vehicle v ON o.vehicle_id = v.id
+			WHERE DATE_FORMAT(oil_date, '%Y-%m') >= #{startDate}
+			AND DATE_FORMAT(oil_date, '%Y-%m') &lt;= #{endDate}
+			GROUP BY
+			FLOOR((DATE_FORMAT(oil_date, '%m') - 1) / 3) + 1,vehicle_id
+		UNION
+			SELECT
+				license_plate,
+				sum(amount),
+				CONVERT (FLOOR((DATE_FORMAT(repair_date, '%m') - 1) / 3) + 1,CHAR)
+			FROM
+				ws_vms_m_repair r
+			LEFT JOIN ws_vms_b_vehicle v ON r.vehicle_id = v.id
+			WHERE
+				DATE_FORMAT(repair_date, '%Y-%m') >= #{startDate}
+			AND DATE_FORMAT(repair_date, '%Y-%m') &lt;= #{endDate}
+			GROUP BY
+				FLOOR((DATE_FORMAT(repair_date, '%m') - 1) / 3) + 1,vehicle_id
+		UNION
+			SELECT
+				license_plate,
+				sum(amount),
+				CONVERT (FLOOR((DATE_FORMAT(insurance_date, '%m') - 1) / 3) + 1,CHAR)
+			FROM
+				ws_vms_m_insurance i
+			LEFT JOIN ws_vms_b_vehicle v ON i.vehicle_id = v.id
+			WHERE
+				DATE_FORMAT(insurance_date, '%Y-%m') >= #{startDate}
+			AND DATE_FORMAT(insurance_date, '%Y-%m') &lt;= #{endDate}
+			GROUP BY
+				FLOOR((DATE_FORMAT(insurance_date, '%m') - 1) / 3) + 1,vehicle_id
+		UNION
+			SELECT
+				license_plate,
+				sum(amount),
+				CONVERT (FLOOR((DATE_FORMAT(regulations_date, '%m') - 1) / 3) + 1,CHAR)
+			FROM
+				ws_vms_m_regulations re
+			LEFT JOIN ws_vms_b_vehicle v ON re.vehicle_id = v.id
+			WHERE
+				DATE_FORMAT(regulations_date, '%Y-%m') >= #{startDate}
+			AND DATE_FORMAT(regulations_date, '%Y-%m') &lt;= #{endDate}
+			GROUP BY
+				FLOOR((DATE_FORMAT(regulations_date, '%m') - 1) / 3) + 1,vehicle_id
+		UNION
+			SELECT
+				license_plate,
+				sum(amount),
+				CONVERT (FLOOR((DATE_FORMAT(accident_date, '%m') - 1) / 3) + 1,CHAR)
+			FROM
+				ws_vms_m_accident a
+			LEFT JOIN ws_vms_b_vehicle v ON a.vehicle_id = v.id
+			WHERE
+				DATE_FORMAT(accident_date, '%Y-%m') >= #{startDate}
+			AND DATE_FORMAT(accident_date, '%Y-%m') &lt;= #{endDate}
+			GROUP BY
+				FLOOR((DATE_FORMAT(accident_date, '%m') - 1) / 3) + 1,vehicle_id
+		UNION
+			SELECT
+				license_plate,
+				sum(amount),
+				CONVERT (FLOOR((DATE_FORMAT(inspect_date, '%m') - 1) / 3) + 1,CHAR)
+			FROM
+				ws_vms_m_year_inspect ii
+			LEFT JOIN ws_vms_b_vehicle v ON ii.vehicle_id = v.id
+			WHERE
+				DATE_FORMAT(inspect_date, '%Y-%m') >= #{startDate}
+			AND DATE_FORMAT(inspect_date, '%Y-%m') &lt;= #{endDate}
+			GROUP BY
+				FLOOR((DATE_FORMAT(inspect_date, '%m') - 1) / 3) + 1,vehicle_id
+			) AS a
+		GROUP BY
+		license_plate,date
+	</select>
+	<select id="getDeviceList" resultType="map">
+		SELECT DISTINCT
+			d.device_code deviceCode,
+			rd.vehicle_id vehicleId
+		FROM
+			ws_vms_b_device d
+		LEFT JOIN ws_vms_r_vehicle_device rd ON d.id = rd.device_id
+		WHERE
+			d.device_type = '0'
+		AND d.id IN (
+			SELECT
+				device_id
+			FROM
+				ws_vms_r_vehicle_device
+		)
+	</select>
+	<select id="getYingYanMileageByVehicleId" resultType="map">
+		SELECT sum(mileage) totalMileage
+		FROM ws_vms_b_mileage m
+		WHERE mileage_type='1'
+		AND vehicle_id=#{vehicleId}
+		<if test="date!=null and date!=''">
+			AND date>#{date}
+		</if>
+	</select>
+
+	<select id="getVehicleDriverByVehicleId" resultType="map">
+		SELECT
+			v.license_plate,
+			d.driver_name
+		FROM
+			ws_vms_b_vehicle v
+		LEFT JOIN ws_vms_r_vehicle_drives vd ON v.id = vd.vehicle_id AND vd.driver_type = '0'
+		LEFT JOIN ws_vms_b_drivers d ON vd.driver_id = d.id
+		where v.id=#{vehicleId}
+	</select>
+</mapper>

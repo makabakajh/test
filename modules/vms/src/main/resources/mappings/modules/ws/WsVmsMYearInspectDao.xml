@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jeesite.modules.ws.dao.WsVmsMYearInspectDao">
+	
+	<!-- 查询数据
+	<select id="findList" resultType="WsVmsMYearInspect">
+		SELECT ${sqlMap.column.toSql()}
+		FROM ${sqlMap.table.toSql()}
+		<where>
+			${sqlMap.where.toSql()}
+		</where>
+		ORDER BY ${sqlMap.order.toSql()}
+	</select> -->
+	<select id="getLastInspectByVehicleId" resultType="com.jeesite.modules.ws.entity.WsVmsMYearInspect">
+		SELECT
+			*
+		FROM
+			ws_vms_m_year_inspect
+		WHERE
+		`status`='0'
+			and vehicle_id = #{vehicleId}
+		ORDER BY inspect_date desc,create_date desc
+		LIMIT 1;
+	</select>
+</mapper>

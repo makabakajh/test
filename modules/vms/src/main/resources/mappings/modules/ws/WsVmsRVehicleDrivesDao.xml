@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jeesite.modules.ws.dao.WsVmsRVehicleDrivesDao">
+	
+	<!-- 查询数据
+	<select id="findList" resultType="WsVmsRVehicleDrives">
+		SELECT ${sqlMap.column.toSql()}
+		FROM ${sqlMap.table.toSql()}
+		<where>
+			${sqlMap.where.toSql()}
+		</where>
+		ORDER BY ${sqlMap.order.toSql()}
+	</select> -->
+	<select id="getMainDriverByVehicleId" resultType="map">
+		SELECT rd.*,d.driver_name  FROM ws_vms_r_vehicle_drives rd
+		LEFT JOIN ws_vms_b_drivers d on rd.driver_id=d.id
+		WHERE driver_type='0'
+		and rd.vehicle_id=#{vehicleId}
+	</select>
+	<select id="getDriverByDrivers" resultType="string">
+		SELECT d.driver_name  FROM ws_vms_r_vehicle_drives rd
+		LEFT JOIN ws_vms_b_drivers d on rd.driver_id=d.id
+		WHERE  rd.vehicle_id=#{vehicleId}
+		and driver_id in
+		<foreach collection="driverList" item="driverId" separator="," open="(" close=")">
+			 #{driverId}
+		</foreach>
+	</select>
+	<select id="getDriverByMainDriverId" resultType="string">
+		SELECT DISTINCT
+			d.driver_name
+		FROM
+			ws_vms_r_vehicle_drives rd
+		LEFT JOIN ws_vms_b_drivers d ON rd.driver_id = d.id
+		WHERE rd.driver_type='0'
+			and  rd.driver_id=#{mainDriverId}
+
+	</select>
+</mapper>

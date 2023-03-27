@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jeesite.modules.ws.dao.WsVmsMOilDao">
+	
+	<!-- 查询数据
+	<select id="findList" resultType="WsVmsMOil">
+		SELECT ${sqlMap.column.toSql()}
+		FROM ${sqlMap.table.toSql()}
+		<where>
+			${sqlMap.where.toSql()}
+		</where>
+		ORDER BY ${sqlMap.order.toSql()}
+	</select> -->
+	<select id="findByVehicleId" resultType="com.jeesite.modules.ws.entity.WsVmsMOil">
+		SELECT * FROM ws_vms_m_oil
+		<trim prefix="WHERE" prefixOverrides="AND|OR">
+			<if test="vehicleId!=null and vehicleId!=''">
+				and vehicle_id=#{vehicleId}
+			</if>
+		</trim>
+	</select>
+	<select id="getAmountByVehicleId" resultType="map">
+		SELECT SUM(amount) total,amount last FROM ws_vms_m_oil o
+		WHERE vehicle_id=#{vehicleId}
+		ORDER BY oil_date desc,create_date desc
+		LIMIT 0,1
+	</select>
+</mapper>
